@@ -19,6 +19,7 @@ class ModerationStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     APPEALED = "appealed"
+    REVIEW_REQUIRED = "review_required"  # Add new status for clarity
 
 class ContentSubmission(BaseModel):
     content: str

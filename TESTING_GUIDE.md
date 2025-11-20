@@ -343,6 +343,35 @@ pytest tests/ --cov=. --cov-report=html
 3. Restart all services
 4. Run tests again
 
+### Issue: "Validation error for ModerationDecision"
+
+**Error Message:**
+```
+1 validation error for ModerationDecision
+status
+  Input should be 'pending', 'processing', 'completed' or 'appealed'
+```
+
+**Solution:**
+This was a bug in the worker where it passed invalid status values. It's now fixed.
+- Restart the worker: `python worker.py`
+- The worker will now use valid status values from the ModerationStatus enum
+
+**Valid Status Values:**
+- `pending`: Content waiting for review or initial processing
+- `processing`: Content currently being analyzed
+- `completed`: Moderation decision finalized
+- `appealed`: User has submitted an appeal
+- `review_required`: Requires human moderator review
+
+### Issue: "Content stuck in processing"
+
+**Solution:**
+1. Check worker logs for errors
+2. Restart worker to clear stuck jobs
+3. Resubmit the content if needed
+4. Check Redis queue: `redis-cli LLEN content_moderation_queue`
+
 ---
 
 ## 📈 Performance Validation

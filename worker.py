@@ -4,6 +4,7 @@ from moderation_graph import ModerationWorkflow
 from models import ModerationDecision
 from config import ANTHROPIC_API_KEY
 import anthropic
+from datetime import datetime
 
 def create_llm_client():
     """Create Anthropic client if API key is available"""
@@ -13,11 +14,19 @@ def create_llm_client():
 
 def process_content_job(workflow: ModerationWorkflow, redis_client: RedisClient, content_data: dict):
     """Process a single content moderation job"""
+    content_id = content_data.get('content_id', 'unknown')
+    
     try:
-        print(f"Processing content: {content_data['content_id']}")
+        print(f"Processing content: {content_id}")
         
         # Process through workflow
         result_state = workflow.process_content(content_data)
+        
+        # Determine status based on whether human review is required
+        if result_state.requires_human_review:
+            status = "pending"  # Changed from "review" to valid enum value
+        else:
+            status = "completed"
         
         # Create decision object
         decision = ModerationDecision(
@@ -29,7 +38,7 @@ def process_content_job(workflow: ModerationWorkflow, redis_client: RedisClient,
             rationale=result_state.rationale,
             detected_issues=result_state.detected_issues,
             language=result_state.language,
-            status="completed" if not result_state.requires_human_review else "review"
+            status=status
         )
         
         # Store results
@@ -39,10 +48,28 @@ def process_content_job(workflow: ModerationWorkflow, redis_client: RedisClient,
         )
         redis_client.store_decision(decision.model_dump(mode='json'))
         
-        print(f"Completed: {content_data['content_id']} - Action: {decision.action}")
+        print(f"✅ Completed: {content_id} - Action: {decision.action}, Severity: {decision.severity:.2f}")
         
     except Exception as e:
-        print(f"Error processing content {content_data.get('content_id')}: {e}")
+        print(f"❌ Error processing content {content_id}: {e}")
+        
+        # Store error result so status endpoint doesn't hang
+        try:
+            error_result = {
+                "content_id": content_id,
+                "severity": 0.0,
+                "action": "review",
+                "rationale": f"Error during processing: {str(e)}",
+                "detected_issues": ["processing_error"],
+                "status": "pending",  # Valid enum value
+                "user_id": content_data.get("user_id", "unknown"),
+                "content": content_data.get("content", ""),
+                "language": "en",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            redis_client.store_result(content_id, error_result)
+        except Exception as store_error:
+            print(f"❌ Failed to store error result: {store_error}")
 
 def main():
     """Main worker loop"""
